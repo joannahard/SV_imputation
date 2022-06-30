@@ -4,7 +4,7 @@ rule all:
     input:
         expand("data/output/{smp}/fastq/{smp}.bam", smp=SAMPLES), 
         expand("data/output/{smp}/fastq/{smp}_1.fq.gz", smp=SAMPLES),
-        expand("data/output/{smp}/trimmed/{smp}_R1_val_1.fq.gz", smp=SAMPLES),
+        #expand("data/output/{smp}/trimmed/{smp}_R1_val_1.fq.gz", smp=SAMPLES),
         expand("data/output/{smp}/mapped/{smp}.mapped.bwa.sam", smp=SAMPLES),
         expand("data/output/{smp}/mapped/{smp}.mapped.bwa.bam", smp=SAMPLES),
         expand("data/output/{smp}/mapped/{smp}.filtered.bwa.bam", smp=SAMPLES),
@@ -18,6 +18,7 @@ rule all:
         expand("data/output/{smp}/mapped/{smp}.illumina.16x.bam.bai", smp=SAMPLES),
         expand("data/output/{smp}/vcf/{smp}_sub4_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz", smp=SAMPLES),
         expand("data/output/{smp}/vcf/{smp}_sub4_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz.csi", smp=SAMPLES)
+
 
 rule cram_2_bam:
     input:
@@ -41,6 +42,7 @@ rule bam_2_fastq:
     threads: 16
     shell:
         "samtools fastq {input.cram_bam} -1 {output.f1} -2 {output.f2} --threads {threads}"
+
 
 rule trimming:
     input:
