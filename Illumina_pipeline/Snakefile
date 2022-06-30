@@ -1,0 +1,245 @@
+SAMPLES, = glob_wildcards("data/input/{smp}.final.cram")
+
+rule all:
+    input:
+        #expand("data/output/{smp}/fastq/{smp}.bam", smp=SAMPLES), 
+        #expand("data/output/{smp}/fastq/{smp}_1.fq.gz", smp=SAMPLES),
+        #expand("data/output/{smp}/trimmed/{smp}_R1_val_1.fq.gz", smp=SAMPLES),
+        #expand("data/output/{smp}/mapped/{smp}.mapped.bwa.sam", smp=SAMPLES),
+        #expand("data/output/{smp}/mapped/{smp}.mapped.bwa.bam", smp=SAMPLES),
+        #expand("data/output/{smp}/mapped/{smp}.filtered.bwa.bam", smp=SAMPLES),
+        #expand("data/output/{smp}/mapped/{smp}.illumina.bam", smp=SAMPLES),
+        #expand("data/output/{smp}/mapped/{smp}.illumina.bam.bai", smp=SAMPLES),
+        #expand("data/output/{smp}/mapped/{smp}.illumina.flagstat", smp=SAMPLES),
+        expand("data/output/{smp}/mapped/{smp}.illumina.16x.bam", smp=SAMPLES),
+        expand("data/output/{smp}/mapped/{smp}.illumina.8x.bam", smp=SAMPLES),
+        expand("data/output/{smp}/mapped/{smp}.illumina.4x.bam", smp=SAMPLES),
+        expand("data/output/{smp}/mapped/{smp}.illumina.2x.bam", smp=SAMPLES),
+        expand("data/output/{smp}/mapped/{smp}.illumina.16x.bam.bai", smp=SAMPLES),
+        expand("data/output/{smp}/vcf/{smp}_sub4_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz", smp=SAMPLES),
+        expand("data/output/{smp}/vcf/{smp}_sub4_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz.csi", smp=SAMPLES)
+
+rule cram_2_bam:
+    input:
+        cram = "data/input/{smp}.final.cram",
+        cram_ref = config["cram_ref"]
+    output:
+        temp("data/output/{smp}/fastq/{smp}.bam")
+    threads: 16
+    params:
+        suffix = "data/output/{smp}/fastq/{smp}"
+    shell:
+        "samtools collate {input.cram} --reference {input.cram_ref} --threads {threads} -u -o {output} {params.suffix}"
+
+
+rule bam_2_fastq:
+    input:
+        cram_bam = "data/output/{smp}/fastq/{smp}.bam"
+    output:
+        f1 = "data/output/{smp}/fastq/{smp}_1.fq.gz",
+        f2 = "data/output/{smp}/fastq/{smp}_2.fq.gz"
+    threads: 16
+    shell:
+        "samtools fastq {input.cram_bam} -1 {output.f1} -2 {output.f2} --threads {threads}"
+
+rule trimming:
+    input:
+        fwd_raw = "data/output/{smp}/fastq/{smp}_1.fq.gz",
+        rev_raw = "data/output/{smp}/fastq/{smp}_2.fq.gz"
+    output:
+        fwd_trim = "data/output/{smp}/trimmed/{smp}_R1_val_1.fq.gz",
+        rev_trim = "data/output/{smp}/trimmed/{smp}_R2_val_2.fq.gz"
+    params:
+        "data/output/{smp}/trimmed/"
+    shell:
+        "trim_galore --phred33 --quality 25 --length 20 --paired {input.fwd_raw} {input.rev_raw} --output_dir {params}"
+
+
+
+rule bwa:
+    input:
+        #r1 = "data/output/{smp}/trimmed/{smp}_R1_val_1.fq.gz",
+        #r2 = "data/output/{smp}/trimmed/{smp}_R2_val_2.fq.gz",
+        r1 = "data/output/{smp}/fastq/{smp}_1.fq.gz",
+        r2 = "data/output/{smp}/fastq/{smp}_2.fq.gz",
+        ref = config["ref"],
+        index = config["ref"] + ".bwt"
+    output:
+        temp("data/output/{smp}/mapped/{smp}.mapped.bwa.sam")
+    threads: 16
+    params:
+        bwa = "-M",
+    log:
+        bwa = "data/output/{smp}/logs/{smp}.bwa.log",
+    shell:
+        "bwa mem {params.bwa} -t {threads} {input.ref} {input.r1} {input.r2} 2> {log.bwa} > {output}"
+
+
+
+rule sam_to_bam:
+    input:
+        "data/output/{smp}/mapped/{smp}.mapped.bwa.sam"
+    output:
+        temp("data/output/{smp}/mapped/{smp}.mapped.bwa.bam")
+    #params:
+        #java = config["settings"]["javaopts"]
+    log:
+       #"{dir}/logs/picard.sam2bam.{sample}.{mapper}.log"
+    shell:
+        #"picard {params.java} SamFormatConverter INPUT={input} OUTPUT={output} > {log} 2>&1"
+        "samtools view -Sb {input} > {output}"
+
+
+
+rule filter_and_fix:
+    input:
+        "data/output/{smp}/mapped/{smp}.mapped.bwa.bam"
+    output:
+        temp("data/output/{smp}/mapped/{smp}.filtered.bwa.bam")
+    params:
+        #filters = "-b -q 2 -F 8", #for amplicons
+        filters = "-b -q 2 -F 1028", #for WGS,
+        sort = "SORT_ORDER=coordinate",
+        read_groups = "CREATE_INDEX=true RGID={smp} RGLB={smp} RGPL=ILLUMINA RGSM={smp} RGCN=\"NA\" RGPU=\"NA\"",
+        java = config["javaopts"]
+    log:
+        filters = "data/output/{smp}/logs/{smp}.samtools.filters.log",
+        sort = "data/output/{smp}/logs/{smp}.picard.sortsam.log",
+        read_groups = "data/output/{smp}/logs/{smp}.picard.addorreplacereadgroup.log"
+    shell:
+        "samtools view {params.filters} {input} 2> {log.filters} |"
+        "picard {params.java} SortSam {params.sort} INPUT=/dev/stdin OUTPUT=/dev/stdout 2> {log.sort} |"
+        "picard {params.java} AddOrReplaceReadGroups {params.read_groups} INPUT=/dev/stdin OUTPUT={output} 2> {log.read_groups}"
+
+
+
+rule samtools_sort:
+    input:
+        "data/output/{smp}/mapped/{smp}.filtered.bwa.bam"
+    output:
+        "data/output/{smp}/mapped/{smp}.illumina.bam"
+    threads: 16
+    shell:
+        "samtools sort -@ {threads} {input} -o {output}"
+
+
+rule samtools_index:
+    input:
+        "data/output/{smp}/mapped/{smp}.illumina.bam"
+    output:
+        "data/output/{smp}/mapped/{smp}.illumina.bam.bai"
+    threads: 16
+    shell:
+        "samtools index {input} --threads {threads}"
+
+
+rule flagstat:
+    input: "data/output/{smp}/mapped/{smp}.illumina.bam"
+    output: "data/output/{smp}/mapped/{smp}.illumina.flagstat"
+    threads: 16
+    shell: "samtools flagstat -@ {threads} {input} > {output}"
+
+
+
+rule ds_16x:
+    input:
+        "data/output/{smp}/mapped/{smp}.illumina.bam"
+    output:
+        "data/output/{smp}/mapped/{smp}.illumina.16x.bam"
+    threads: 16
+    shell:
+        "samtools view --threads {threads} -bs 42.5 {input} > {output}" # -@ {threads}
+
+
+rule ds_8x:
+    input:
+        "data/output/{smp}/mapped/{smp}.illumina.bam"
+    output:
+        "data/output/{smp}/mapped/{smp}.illumina.8x.bam"
+    threads: 16
+    shell:
+        "samtools view --threads {threads} -bs 32.25 {input} > {output}"
+
+
+
+rule ds_4x:
+    input:
+        "data/output/{smp}/mapped/{smp}.illumina.bam"
+    output:
+        "data/output/{smp}/mapped/{smp}.illumina.4x.bam"
+    threads: 16
+    shell:
+        "samtools view --threads {threads} -bs 22.125 {input} > {output}"
+
+
+rule ds_2x:
+    input:
+        "data/output/{smp}/mapped/{smp}.illumina.bam"
+    output:
+        "data/output/{smp}/mapped/{smp}.illumina.2x.bam"
+    threads: 16
+    shell:
+        "samtools view --threads {threads} -bs 12.0625 {input} > {output}"
+
+
+rule index_ds:
+    input:
+        sub1 = "data/output/{smp}/mapped/{smp}.illumina.16x.bam",
+        sub2 = "data/output/{smp}/mapped/{smp}.illumina.8x.bam",
+        sub3 = "data/output/{smp}/mapped/{smp}.illumina.4x.bam",
+        sub4 = "data/output/{smp}/mapped/{smp}.illumina.2x.bam" ,       
+    output:
+        sub1_i = "data/output/{smp}/mapped/{smp}.illumina.16x.bam.bai",
+        sub2_i = "data/output/{smp}/mapped/{smp}.illumina.8x.bam.bai", 
+        sub3_i = "data/output/{smp}/mapped/{smp}.illumina.4x.bam.bai",
+        sub4_i = "data/output/{smp}/mapped/{smp}.illumina.2x.bam.bai"
+    run:
+        shell("samtools index {input.sub1}") 
+        shell("samtools index {input.sub2}") 
+        shell("samtools index {input.sub3}")
+        shell("samtools index {input.sub4}")
+
+
+rule bcftools:
+    input:
+        sub0 = "data/output/{smp}/mapped/{smp}.illumina.bam",
+        sub1 = "data/output/{smp}/mapped/{smp}.illumina.16x.bam",
+        sub2 = "data/output/{smp}/mapped/{smp}.illumina.8x.bam",
+        sub3 = "data/output/{smp}/mapped/{smp}.illumina.4x.bam",
+        sub4 = "data/output/{smp}/mapped/{smp}.illumina.2x.bam" ,
+        refpanel_vcf = config["refpanel_vcf"],
+        refpanel_tsv = config["refpanel_tsv"],
+        ref = config["ref"]
+    output:
+        sub0_vcf = "data/output/{smp}/vcf/{smp}_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz",
+        sub1_vcf = "data/output/{smp}/vcf/{smp}_sub1_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz",
+        sub2_vcf = "data/output/{smp}/vcf/{smp}_sub2_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz",
+        sub3_vcf = "data/output/{smp}/vcf/{smp}_sub3_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz",
+        sub4_vcf = "data/output/{smp}/vcf/{smp}_sub4_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz"
+    run:
+        shell("bcftools mpileup -f {input.ref} -I -E -a 'FORMAT/DP' -T {input.refpanel_vcf} -r chr20 {input.sub0} -Ou | bcftools call -Aim -C alleles -T {input.refpanel_tsv} -Oz -o {output.sub0_vcf}")
+        shell("bcftools mpileup -f {input.ref} -I -E -a 'FORMAT/DP' -T {input.refpanel_vcf} -r chr20 {input.sub1} -Ou | bcftools call -Aim -C alleles -T {input.refpanel_tsv} -Oz -o {output.sub1_vcf}")
+        shell("bcftools mpileup -f {input.ref} -I -E -a 'FORMAT/DP' -T {input.refpanel_vcf} -r chr20 {input.sub2} -Ou | bcftools call -Aim -C alleles -T {input.refpanel_tsv} -Oz -o {output.sub2_vcf}")
+        shell("bcftools mpileup -f {input.ref} -I -E -a 'FORMAT/DP' -T {input.refpanel_vcf} -r chr20 {input.sub3} -Ou | bcftools call -Aim -C alleles -T {input.refpanel_tsv} -Oz -o {output.sub3_vcf}")
+        shell("bcftools mpileup -f {input.ref} -I -E -a 'FORMAT/DP' -T {input.refpanel_vcf} -r chr20 {input.sub4} -Ou | bcftools call -Aim -C alleles -T {input.refpanel_tsv} -Oz -o {output.sub4_vcf}")
+
+rule bcftools_index:
+    input:
+        sub0_vcf = "data/output/{smp}/vcf/{smp}_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz",
+        sub1_vcf = "data/output/{smp}/vcf/{smp}_sub1_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz",
+        sub2_vcf = "data/output/{smp}/vcf/{smp}_sub2_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz",
+        sub3_vcf = "data/output/{smp}/vcf/{smp}_sub3_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz",
+        sub4_vcf = "data/output/{smp}/vcf/{smp}_sub4_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz"
+    output:
+        sub0_vcf_i = "data/output/{smp}/vcf/{smp}_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz.csi",
+        sub1_vcf_i = "data/output/{smp}/vcf/{smp}_sub1_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz.csi",
+        sub2_vcf_i = "data/output/{smp}/vcf/{smp}_sub2_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz.csi",
+        sub3_vcf_i = "data/output/{smp}/vcf/{smp}_sub3_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz.csi",
+        sub4_vcf_i = "data/output/{smp}/vcf/{smp}_sub4_bcftools_for_glimpse_full_refpanel_illumina.vcf.gz.csi"
+    run:
+        shell("bcftools index {input.sub0_vcf}")
+        shell("bcftools index {input.sub1_vcf}")
+        shell("bcftools index {input.sub2_vcf}")
+        shell("bcftools index {input.sub3_vcf}")
+        shell("bcftools index {input.sub4_vcf}")
+

@@ -1,0 +1,5 @@
+cram_ref: "/proj/sens2016003/nobackup/wharf/joanna/joanna-sens2016003/Garrison_project/Illumina/GRCh38_full_analysis_set_plus_decoy_hla.fa" 
+ref: "/proj/sens2016003/nobackup/joanna/Garrison_project/reference/GRCh38_no_alt_analysis_set.fasta" 
+javaopts: "-Xmx5g -Djava.io.tmpdir=`pwd`/tmp"
+refpanel_vcf: "/proj/sens2016003/nobackup/joanna/Garrison_project/glimpse/shared/1000GP_umich_chr20_snps_genotypes.sites.vcf.gz"
+refpanel_tsv: "/proj/sens2016003/nobackup/joanna/Garrison_project/glimpse/shared/1000GP_umich_chr20_snps_genotypes.sites.tsv.gz"
