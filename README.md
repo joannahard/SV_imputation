@@ -148,6 +148,60 @@ cuteSV SAMPLE_sub1.bam ref.fasta SAMPLE_sub1_cuteSV.vcf . --max_cluster_bias_INS
 
 
 
+
+## ONT analysis   
+This pipeline takes unaligned bams as input and outputs processed bams, GLs in SV calls, GLs in SNP sites present in a 1000GP reference panel
+
+
+Software used:
+bam2fastq 1.3.0
+blasr v.5.3.2
+.minimap2 v.2.24
+.samtools v.1.14
+picard v.2.23.4
+bcftools v.1.14
+cuteSV v.1.0.13
+SURVIVOR v.1.0.7
+
+
+The workflow:  
+
+1. Align reads with minimap2  
+
+   minimap2 -t 16 -a -z 600,200 -x map-ont SAMPLE.fastq.gz > SAMPLE.sam  
+
+   
+2. Sort and index  
+   
+   samtools view -S -b SAMPLE.sam > SAMPLE.bam  
+  
+   samtools sort SAMPLE.bam -@ 16 -o SAMPLE_sorted.bam  
+
+3. Add or replace readgroup  
+
+   java -jar picard.jar AddOrReplaceReadGroups I=SAMPLE_sorted.bam O=SAMPLE_rg.bam RGID=1 RGLB=ONT RGPL=ONT RGPU=ONT RGSM=HG002_ONT  
+
+
+4. Downsample and index  
+
+   samtools view -@ 16 -bs 42.5 SAMPLE_rg.bam > SAMPLE_sub1.bam  
+   samtools view -@ 16 -bs 32.25 SAMPLE_rg.bam > SAMPLE_sub2.bam  
+   samtools view -@ 16 -bs 22.125 SAMPLE_rg.bam > SAMPLE_sub3.bam  
+   samtools view -@ 16 -bs 12.0625 SAMPLE_rg.bam > SAMPLE_sub4.bam  
+
+   samtools index SAMPLE_sub1.bam  
+   samtools index SAMPLE_sub2.bam  
+   samtools index SAMPLE_sub3.bam  
+   samtools index SAMPLE_sub4.bam  
+
+5. Compute genotype likelihoods in reference panel sites for each bam file to be used for generating haplotype scaffolds  
+
+   bcftools mpileup -f ${REFGEN} -I -E -a 'FORMAT/DP' -T ref_panel.vcf -r chr20 SAMPLE_sub1.bam -Ou | bcftools call -Aim -C alleles -T ref_panel.tsv -Oz -o SAMPLE_sub1.vcf.gz  
+
+   bcftools index -f SAMPLE_sub1.vcf.gz  
+
+
+
 ## Impute SVs with MVNcall
 
 MVNcall is a program developed for genotype calling and phasing using low-coverage next-generation sequencing reads information.
