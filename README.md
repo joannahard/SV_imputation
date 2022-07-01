@@ -139,12 +139,12 @@ cuteSV SAMPLE_sub1.bam ref.fasta SAMPLE_sub1_cuteSV.vcf . --max_cluster_bias_INS
 
 * Perform SURVIVOR to merge every single vcf into merged.vcf  
 
-SURVIVOR merge cuteSV_files 1000 1 1 1 0 30 cuteSV_merged_found_in_1.vcf  
+   SURVIVOR merge cuteSV_files 1000 1 1 1 0 30 cuteSV_merged_found_in_1.vcf  
 
 
 * Rerun cuteSV for each sample with -Ivcf merged.vcf (force calling step  
 
-cuteSV SAMPLE_sub1.bam ref.fasta SAMPLE_sub1_cuteSV_forcecall.vcf . -Ivcf cuteSV_merged_found_in_1.vcf --max_cluster_bias_INS 1000 --diff_ratio_merging_INS 0.9 --max_cluster_bias_DEL 1000 --diff_ratio_merging_DEL 0.5 --genotype --min_support 1
+   cuteSV SAMPLE_sub1.bam ref.fasta SAMPLE_sub1_cuteSV_forcecall.vcf . -Ivcf cuteSV_merged_found_in_1.vcf --max_cluster_bias_INS 1000 --diff_ratio_merging_INS 0.9 --max_cluster_bias_DEL 1000 --diff_ratio_merging_DEL 0.5 --genotype --min_support 1
 
 
 
